@@ -1,59 +1,87 @@
 export default async function handler(req, res) {
-  // CORS headers
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  
-  // Prevent Vercel caching old responses
-  res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.setHeader("Cache-Control", "no-store");
 
-  // Handle OPTIONS preflight
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  // Only allow GET
-  if (req.method !== "GET") {
-    return res.status(405).json({
-      error: "Method not allowed"
-    });
-  }
+  const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+  const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID;
+  const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
 
-  const API_KEY = process.env.YOUTUBE_API_KEY;
-  const CHANNEL_ID = "UCdzf46Ahuj5-qk2c6D7YKJA";
-
-  if (!API_KEY) {
-    return res.status(500).json({
-      error: "Missing YouTube API key"
-    });
-  }
+  const YOUTUBE_CHANNEL_ID = "UCdzf46Ahuj5-qk2c6D7YKJA";
+  const TWITCH_USERNAME = "obithelegend1";
 
   try {
-    const youtubeResponse = await fetch(
-      `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${CHANNEL_ID}&key=${API_KEY}`
+    // ---------- YouTube ----------
+    const ytRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${YOUTUBE_CHANNEL_ID}&key=${YOUTUBE_API_KEY}`
+    );
+    const ytData = await ytRes.json();
+
+    const youtube = ytData.items?.length
+      ? Number(ytData.items[0].statistics.subscriberCount)
+      : null;
+
+    // ---------- Twitch Auth ----------
+    const tokenRes = await fetch(
+      `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
+      {
+        method: "POST",
+      }
     );
 
-    const youtubeData = await youtubeResponse.json();
+    const tokenData = await tokenRes.json();
+    const accessToken = tokenData.access_token;
 
-    if (!youtubeData.items || youtubeData.items.length === 0) {
+    // ---------- Get Twitch User ID ----------
+    const userRes = await fetch(
+      `https://api.twitch.tv/helix/users?login=${TWITCH_USERNAME}`,
+      {
+        headers: {
+          "Client-ID": TWITCH_CLIENT_ID,
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    const userData = await userRes.json();
+
+    if (!userData.data?.length) {
       return res.status(404).json({
-        error: "YouTube channel not found"
+        error: "Twitch user not found",
       });
     }
 
-    const subscribers = Number(
-      youtubeData.items[0].statistics.subscriberCount
+    const userId = userData.data[0].id;
+
+    // ---------- Get Follower Count ----------
+    const followersRes = await fetch(
+      `https://api.twitch.tv/helix/channels/followers?broadcaster_id=${userId}`,
+      {
+        headers: {
+          "Client-ID": TWITCH_CLIENT_ID,
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
     );
 
+    const followersData = await followersRes.json();
+
     return res.status(200).json({
-      youtube: subscribers
+      youtube,
+      twitch: followersData.total,
     });
 
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
 
     return res.status(500).json({
-      error: "Failed to fetch social data"
+      error: err.message,
     });
   }
 }

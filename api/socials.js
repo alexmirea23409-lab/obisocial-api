@@ -1,7 +1,7 @@
 export default async function handler(req, res) {
 
   const API_KEY = process.env.YOUTUBE_API_KEY;
-  const CHANNEL_HANDLE = "@Obithelegend";
+  const CHANNEL_ID = "UCdzf46Ahuj5-qk2c6D7YKJA";
 
   try {
 
